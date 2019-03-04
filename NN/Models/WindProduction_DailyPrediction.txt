@@ -1,0 +1,73 @@
+# ============================================================================ 
+#    Prediction for daily energy production with known predicted wind speed
+#    Using Deep Neural Network with 3 layers (2 hidden and 1 output layer)
+# ============================================================================
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+from sklearn.model_selection import train_test_split
+from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import KFold
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import MinMaxScaler
+from tensorflow.python.keras.models import Sequential
+from tensorflow.python.keras.layers import Dense
+from tensorflow.python.keras.wrappers.scikit_learn import KerasRegressor
+from sklearn.ensemble import IsolationForest
+%matplotlib inline
+import os
+
+path="C:/Users/Nikola/Documents/ML Labs/Lab 5 NN"
+os.chdir(path)
+os.getcwd()
+
+dataset=np.loadtxt("wind_production_daily.txt", delimiter="\t", skiprows=1)
+df = pd.DataFrame(dataset[:,[0,3]])
+
+clf = IsolationForest(max_samples = 1000, random_state = 42)
+clf.fit(df)
+y_noano = clf.predict(df)
+y_noano = pd.DataFrame(y_noano, columns = ['Top'])
+y_noano[y_noano['Top'] == 1].index.values
+
+df = df.iloc[y_noano[y_noano['Top'] == 1].index.values]
+df.reset_index(drop = True, inplace = True)
+print("Number of Outliers:", y_noano[y_noano['Top'] == -1].shape[0])
+print("Number of rows without outliers:", df.shape[0])
+
+x=df.values[:,0]
+y=df.values[:,1]
+
+x=np.reshape(x, (-1,1))
+y=np.reshape(y, (-1,1))
+scaler = MinMaxScaler()
+scaler.fit(x)
+xscale=scaler.transform(x)
+scaler.fit(y)
+yscale=scaler.transform(y)
+
+X_train, X_test, y_train, y_test = train_test_split(xscale, yscale)
+
+plt.plot(X_train, y_train, 'o', color='b')
+
+model = Sequential()
+model.add(Dense(64, input_dim=1, kernel_initializer='normal', activation='relu'))
+model.add(Dense(28, kernel_initializer='normal', activation='relu'))
+model.add(Dense(8, kernel_initializer='normal', activation='relu'))
+model.add(Dense(1))
+model.summary()
+
+opt = tf.keras.optimizers.SGD(lr=0.02, clipvalue=1.)
+model.compile(loss='mse', optimizer=opt, metrics=['mae'])
+
+callbacks = [tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5)]
+
+model.fit(X_train, y_train, epochs=1000,  verbose=1, validation_split=0.2, callbacks=callbacks)
+
+print(model.evaluate(X_test, y_test))
+
+plt.figure(figsize=(20,5))
+plt.plot(scaler.inverse_transform(model.predict(X_test)))
+plt.plot(scaler.inverse_transform(y_test))

@@ -1,0 +1,73 @@
+# ================================================================= 
+#    Prediction for hourly energy production from Small HPP
+#    With known production from previos hour
+#    Using Recurrent Neural Network composed of LSTM units
+# =================================================================
+
+import numpy
+import matplotlib.pyplot as plt
+import pandas
+import math
+from tensorflow.python.keras.models import Sequential
+from tensorflow.python.keras.layers import Dense
+from tensorflow.python.keras.layers import LSTM
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.metrics import mean_squared_error
+import os
+path="C:/Users/Nikola/Documents/ML Labs/Lab 5 NN"
+os.chdir(path)
+
+# The DateTime column is discarded because the data is ordered and exactly from one hour appart
+dataframe = pandas.read_csv('Small_HPP_production_hourly_2015-2017.csv', usecols=[1], engine='python')
+plt.figure(figsize=(20,5))
+plt.plot(dataframe)
+plt.show()
+
+dataset = dataframe.values
+scaler = MinMaxScaler(feature_range=(0, 1))
+dataset = scaler.fit_transform(dataset)
+
+# Because the order of data is important, it is not a random split
+train_size = int(len(dataset) * 0.8)
+test_size = len(dataset) - train_size
+train, test = dataset[0:train_size,:], dataset[train_size:,:]
+
+# We have a time series data set, and need to transform it to a supervides learing dataset (inpits and outputs)
+# num_previous is the number of previos hours we take into consideration
+# The model works well with just the production from previos hour for input
+def create_dataset(dataset, num_previous):
+    X_data, y_data = [], []
+    for i in range(len(dataset)-num_previous-1):
+        x = dataset[i:(i+num_previous), 0]
+        X_data.append(x)
+        y_data.append(dataset[i + num_previous, 0])
+    return numpy.array(X_data), numpy.array(y_data)
+
+num_previous = 1
+X_train, y_train = create_dataset(train, num_previous)
+X_test, y_test = create_dataset(test, num_previous)
+
+# LSTM requires this format
+X_train = numpy.reshape(X_train, (X_train.shape[0], 1, X_train.shape[1]))
+X_test = numpy.reshape(X_test, (X_test.shape[0], 1, X_test.shape[1]))
+
+# NN model with one output neuron - the predicted production
+model = Sequential()
+model.add(LSTM(4, input_shape=(1, num_previous)))
+model.add(Dense(1))
+
+model.compile(loss='mse', optimizer='adam', metrics=['mae'])
+
+model.fit(X_train, y_train, epochs=5, verbose=2)
+
+# Evaluation of the model
+print(model.evaluate(X_test, y_test, verbose = 0))
+
+# Making predictions for the test set and scaling it back
+test_predict = model.predict(X_test)
+test_predict = scaler.inverse_transform(test_predict)
+y_test = scaler.inverse_transform([y_test])
+
+# Ploting the expected and predicted productions for the test set
+plt.plot(y_test[0])
+plt.plot(test_predict)
